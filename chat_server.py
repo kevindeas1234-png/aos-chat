@@ -173,14 +173,18 @@ def render_page(config: dict) -> str:
     return f"""<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <title>AOS</title>
 <style>
   :root {{ color-scheme: dark; }}
   * {{ box-sizing: border-box; }}
+  html {{ height:100%; }}
   body {{ margin:0; background:#0b1220; color:#dbeafe;
-         font:15px/1.45 -apple-system,Segoe UI,Roboto,sans-serif;
-         display:flex; flex-direction:column; height:100dvh; }}
+         font-size:15px; line-height:1.45;
+         font-family:-apple-system,"Segoe UI",Roboto,sans-serif;
+         -webkit-text-size-adjust:100%;
+         display:flex; flex-direction:column;
+         height:100vh; height:100dvh; }}
   header {{ padding:10px 14px; background:#0e1826; border-bottom:1px solid #1d3145;
             display:flex; gap:8px; align-items:baseline; }}
   header b {{ color:#2ee6c5; letter-spacing:.08em; font-size:13px; }}
@@ -195,13 +199,19 @@ def render_page(config: dict) -> str:
             color:#8fd6b4; font:11px/1.4 ui-monospace,Consolas,monospace;
             padding:8px 10px; border-radius:10px; }}
   .truth b {{ color:#2ee6c5; }}
-  footer {{ padding:10px; background:#0e1826; border-top:1px solid #1d3145;
-            display:flex; gap:8px; padding-bottom:calc(10px + env(safe-area-inset-bottom)); }}
-  textarea {{ flex:1; resize:none; height:44px; padding:11px 12px; border-radius:12px;
-              border:1px solid #1d3145; background:#0b1220; color:#dbeafe;
-              font:15px/1.3 inherit; }}
-  button {{ width:64px; border-radius:12px; border:1px solid #1a6b62;
-            background:#123b36; color:#2ee6c5; font-weight:600; }}
+  footer {{ position:sticky; bottom:0; z-index:2;
+            padding:10px; background:#0e1826; border-top:1px solid #1d3145;
+            display:flex; gap:8px; align-items:flex-end;
+            padding-bottom:calc(10px + env(safe-area-inset-bottom)); }}
+  form {{ display:flex; gap:8px; flex:1; }}
+  textarea {{ flex:1; min-height:44px; max-height:120px; resize:none;
+              padding:11px 12px; border-radius:12px;
+              border:1px solid #2a4a63; background:#101c2a; color:#dbeafe;
+              font-family:inherit; font-size:16px; line-height:1.3; }}
+  textarea::placeholder {{ color:#6f8ba3; }}
+  button {{ min-width:64px; height:44px; padding:0 12px; border-radius:12px;
+            border:1px solid #1a6b62; background:#123b36; color:#2ee6c5;
+            font-family:inherit; font-size:15px; font-weight:600; }}
   button:disabled {{ opacity:.5; }}
   .hint {{ color:#4d6b81; font-size:11px; padding:0 14px 6px; }}
 </style></head>
@@ -212,8 +222,11 @@ def render_page(config: dict) -> str:
 </div>
 <div class="hint" id="hint"></div>
 <footer>
-  <textarea id="box" placeholder="Message AOS..." autofocus></textarea>
-  <button id="send">Send</button>
+  <form id="composer">
+    <textarea id="box" rows="1" placeholder="Message AOS..."
+              enterkeyhint="send" autocomplete="off"></textarea>
+    <button id="send" type="submit">Send</button>
+  </form>
 </footer>
 <script>
 const log = document.getElementById('log'), box = document.getElementById('box'),
@@ -252,7 +265,10 @@ async function submit() {{
     pending.textContent = 'Request failed: ' + e;
   }} finally {{ send.disabled = false; box.focus(); }}
 }}
-send.onclick = submit;
+// A real form, so a phone keyboard's Go/Enter key submits rather than doing nothing.
+document.getElementById('composer').addEventListener('submit', e => {{
+  e.preventDefault(); submit();
+}});
 box.addEventListener('keydown', e => {{
   if (e.key === 'Enter' && !e.shiftKey) {{ e.preventDefault(); submit(); }}
 }});
@@ -276,17 +292,22 @@ class Handler(BaseHTTPRequestHandler):
     def _note(self, message: str) -> None:
         print(f"[chat] {datetime.now().strftime('%H:%M:%S')} {message}", flush=True)
 
-    def _send(self, code: int, body: bytes, content_type: str) -> None:
+    def _send(self, code: int, body: bytes, content_type: str,
+              no_store: bool = False) -> None:
         self.send_response(code)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
+        if no_store:
+            # The page is generated per request and its UI changes; a cached copy
+            # on a phone is a confusing way to test a fix.
+            self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
 
     def do_GET(self):
         if self.path in ("/", "/index.html"):
             page = render_page(Handler.config).encode("utf-8")
-            self._send(200, page, "text/html; charset=utf-8")
+            self._send(200, page, "text/html; charset=utf-8", no_store=True)
             self._note(f"GET /  200  page served ({len(page)} bytes)")
         elif self.path == "/api/status":
             self._send(200, json.dumps(gather_status()).encode("utf-8"),
