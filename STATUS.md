@@ -11,7 +11,7 @@ The app is live and answering with a real model, grounded in real machine facts.
 | Item | Value |
 |---|---|
 | Page | http://127.0.0.1:8081 |
-| On the LAN / phone | http://192.168.0.197:8081 |
+| On the LAN / phone | http://<LAN-IP>:8081 |
 | Model | `google/gemma-4-e4b` @ http://127.0.0.1:1234/v1 |
 | Port | 8081 (from `config.json`) |
 
