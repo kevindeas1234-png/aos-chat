@@ -10,6 +10,18 @@ the whole point of the project.
 
 Works in a desktop browser and on a phone on the same network.
 
+## Requirements
+
+| Requirement | Notes |
+|---|---|
+| Python 3.10 or newer | no third-party packages; standard library only |
+| A local OpenAI-compatible endpoint | LM Studio on `:1234` (default) or Ollama on `:11434` |
+| A model loaded in that endpoint | the self-test fails clearly if nothing is loaded |
+| A browser, on this PC or a phone on the same network | no JavaScript libraries, no build step |
+| ~1 MB of disk | the app is one Python file plus a config |
+
+Nothing is sent to any remote service. The model runs on your machine, and so does the page.
+
 ## Quick start
 
 ```bash
