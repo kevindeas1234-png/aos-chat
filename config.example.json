@@ -1,0 +1,12 @@
+{
+  "model": {
+    "base_url": "http://127.0.0.1:1234/v1",
+    "model": "google/gemma-4-e4b",
+    "api_key": "",
+    "system": "You are AOS, an assistant running on the user's own computer. Be concise and concrete. If machine facts are supplied, use them and say what you used. Never invent hardware details."
+  },
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8081
+  }
+}

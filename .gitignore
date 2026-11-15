@@ -1,0 +1,11 @@
+# never commit a credential
+config.json
+
+# runtime state
+selftest.txt
+error.log
+launcher_log.txt
+_out.txt
+_err.txt
+history/
+__pycache__/
