@@ -13,3 +13,6 @@ __pycache__/
 # generated TLS material: the key is a secret, the certificate is machine-specific
 cert.pem
 key.pem
+
+# transient run output
+run_*.log

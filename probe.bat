@@ -1,7 +1,7 @@
 @echo off
 setlocal
 rem Probe for a local model endpoint and write the result where the agent can read it.
-set "OUT=D:\AOS\chat\endpoint_report.txt"
+set "OUT=D:\AOS-chat\endpoint_report.txt"
 
 >  "%OUT%" echo AOS endpoint probe
 >> "%OUT%" echo %DATE% %TIME%
