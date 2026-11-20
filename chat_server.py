@@ -22,6 +22,7 @@ import os
 import re
 import shutil
 import socket
+import ssl
 import sys
 import threading
 import time
@@ -47,6 +48,9 @@ DEFAULT_CONFIG = {
     # auth_token: empty means "no authentication", which is the LAN default. Set it
     # before exposing the page beyond your own network; see SECURITY.md.
     "server": {"host": "0.0.0.0", "port": 8080, "auth_token": ""},
+    # tls: off unless a port is given. When on, a second HTTPS listener runs beside
+    # the plain one, so the LAN path is unchanged and the internet path is encrypted.
+    "tls": {"port": 0, "cert": "cert.pem", "key": "key.pem"},
 }
 
 
@@ -411,6 +415,22 @@ def self_test(port: int) -> None:
         lines.append(line)
         print(f"[chat] self-test {line}", flush=True)
 
+    # If the secure listener is on, prove it too - an untested second port is how
+    # you discover at 2am that the encrypted path was never actually working.
+    tls_port = int((Handler.config.get("tls") or {}).get("port") or 0)
+    if tls_port:
+        context = ssl._create_unverified_context()   # self-signed, by design
+        try:
+            request = urllib.request.Request(
+                f"https://127.0.0.1:{tls_port}/api/status", headers=headers)
+            with urllib.request.urlopen(request, context=context, timeout=8) as response:
+                body = response.read()
+            line = f"https /api/status -> HTTP {response.status} ({len(body)} bytes)"
+        except Exception as exc:            # noqa: BLE001 - report the reason
+            line = f"https /api/status -> FAILED: {type(exc).__name__}: {exc}"
+        lines.append(line)
+        print(f"[chat] self-test {line}", flush=True)
+
     # one tiny model call: proves the endpoint and the token, not just the socket
     base = Handler.config["model"]["base_url"].rstrip("/")
     probe = {
@@ -587,6 +607,38 @@ def main(argv: list[str]) -> int:
         print(f"[chat] cannot bind {host}:{port} - {exc}")
         print(f"[chat] something else owns the port: netstat -ano | findstr :{port}")
         return 2
+    # --- optional HTTPS listener -------------------------------------------
+    # Same handler, same checks, a different socket. Deliberately a second port
+    # rather than replacing the first: a phone on the LAN should keep working
+    # exactly as before, and the exposed path should be the encrypted one.
+    tls_server = None
+    tls_cfg = config.get("tls") or {}
+    tls_port = int(tls_cfg.get("port") or 0)
+    if tls_port:
+        cert_path = tls_cfg.get("cert") or "cert.pem"
+        key_path = tls_cfg.get("key") or "key.pem"
+        if not os.path.isabs(cert_path):
+            cert_path = os.path.join(HERE, cert_path)
+        if not os.path.isabs(key_path):
+            key_path = os.path.join(HERE, key_path)
+        if not (os.path.isfile(cert_path) and os.path.isfile(key_path)):
+            print("[chat] tls configured but the certificate or key is missing")
+            print("[chat]   run: py tools\\make_cert.py   - then restart")
+            tls_port = 0
+        else:
+            try:
+                context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+                context.minimum_version = ssl.TLSVersion.TLSv1_2
+                context.load_cert_chain(cert_path, key_path)
+                tls_server = SingleInstanceServer((host, tls_port), Handler)
+                tls_server.socket = context.wrap_socket(tls_server.socket,
+                                                       server_side=True)
+                threading.Thread(target=tls_server.serve_forever, daemon=True).start()
+            except OSError as exc:
+                print(f"[chat] cannot start TLS on {tls_port}: {exc}")
+                tls_server = None
+                tls_port = 0
+
     shown = lan_address() if host in ("0.0.0.0", "") else host
     auth = _auth_token(config)
     print(f"[chat] auth    {'required - use ?t=<token> or a Bearer header' if auth else 'off (any device on this network can read the page)'}")
@@ -594,6 +646,14 @@ def main(argv: list[str]) -> int:
           f"{config['model'].get('base_url')}")
     print(f"[chat] locally http://127.0.0.1:{port}")
     print(f"[chat] on your network  http://{shown}:{port}")
+    if tls_server is not None:
+        print(f"[chat] secure          https://{shown}:{tls_port}  (self-signed)")
+        if not auth:
+            print("[chat] WARNING: TLS is on but there is no page token.")
+            print("[chat] WARNING: encrypted transport does not authenticate anyone -")
+            print("[chat] WARNING: run 'py chat_server.py --set-auth' before exposing this.")
+    else:
+        print("[chat] secure          off (plain HTTP only)")
     print("[chat] Ctrl+C to stop")
     threading.Thread(target=self_test, args=(port,), daemon=True).start()
     if not args.no_browser:
@@ -603,6 +663,8 @@ def main(argv: list[str]) -> int:
     except KeyboardInterrupt:
         print("\n[chat] stopped")
     finally:
+        if tls_server is not None:
+            tls_server.server_close()
         server.server_close()
     return 0
 

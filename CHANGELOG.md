@@ -5,6 +5,11 @@ All notable changes to AOS chat. Format follows [Keep a Changelog](https://keepa
 ## [Unreleased]
 
 ### Added
+- **An optional HTTPS listener**, so the page can be reached from outside the network
+  with encryption. `tools/make_cert.py` writes a self-signed certificate for this
+  machine's names and addresses; a `tls` block in `config.json` starts a second
+  listener (default 8443) beside the plain one, so the LAN path is unchanged. The
+  self-test now proves both listeners. Plain HTTP to the TLS port is refused.
 - **Optional page authentication.** `--set-auth` stores a token; clients send
   `Authorization: Bearer <token>` or `?t=<token>`. Compared in constant time, 401
   otherwise. With no token configured, behaviour is unchanged: open to the LAN.

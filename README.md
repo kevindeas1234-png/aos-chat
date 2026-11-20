@@ -82,12 +82,59 @@ rather than yesterday's page.
 - **The port is exclusive.** If something else holds it you get a clear message naming the
   command to find it, rather than a silent second server.
 
+## Reaching it from outside your network
+
+The LAN path above needs no configuration. Reaching it from the internet needs two
+decisions, and they are separate: **encryption** and **access**.
+
+**1. Encryption — a second listener on 8443.**
+
+```bash
+py tools/make_cert.py          # writes cert.pem / key.pem for this machine's names
+```
+
+then in `config.json`:
+
+```json
+"tls": {"port": 8443, "cert": "cert.pem", "key": "key.pem"}
+```
+
+Restart. The plain listener on 8081 is untouched — the LAN keeps working exactly as before,
+and the encrypted listener is what you expose. The certificate is self-signed, so the phone
+warns once; accept it knowingly.
+
+**2. Access — a token, always.**
+
+```bash
+py chat_server.py --set-auth
+```
+
+The app prints a warning at startup if TLS is on without a token, because **encryption does
+not authenticate anyone**. Both are needed.
+
+**Before you forward a port**, know what you are choosing:
+
+| Approach | Exposure | Notes |
+|---|---|---|
+| Tailscale or similar mesh | none | phone joins a private network; no router change, no public port |
+| Tunnel (Cloudflare, ngrok) | a URL, TLS-terminated | no port forwarding; a third party is in the path |
+| **Forward 8443 + TLS + token** | **public** | works, and is the most exposed of the three. Also needs a DDNS name, because a home IP changes |
+
+All three are documented because all three are legitimate. The order is a recommendation, not
+a prohibition — but the last one puts an AI endpoint on the public internet, and the token is
+the only thing between it and anyone who finds it.
+
 ## Troubleshooting
 
 **"Your connection is not private" in Chrome** — the browser is forcing HTTPS against a
 plain HTTP server. Type the address with `http://` explicitly, or turn off *Settings →
 Privacy and security → Security → Always use secure connections*. The word "private" there
 refers to a certificate, not to the private IP range your network uses.
+
+**The phone shows a certificate warning on https://…:8443** — expected: the certificate is
+self-signed, so no authority vouches for it. Accept it once on that device. If you would
+rather not see the warning at all, that is the argument for a tunnel that terminates TLS with
+a real certificate.
 
 **401 from the model endpoint** — the token is wrong. It cannot be recovered from disk,
 because LM Studio stores only a hash of it; copy a fresh one from the Developer panel and
