@@ -5,6 +5,11 @@ All notable changes to AOS chat. Format follows [Keep a Changelog](https://keepa
 ## [Unreleased]
 
 ### Added
+- **Optional page authentication.** `--set-auth` stores a token; clients send
+  `Authorization: Bearer <token>` or `?t=<token>`. Compared in constant time, 401
+  otherwise. With no token configured, behaviour is unchanged: open to the LAN.
+  The self-test authenticates itself, so enabling auth cannot make it report a
+  failure that only exists because the test forgot its own key.
 - `README.md` — the repository previously shipped only `STATUS.md`.
 - `CREDITS.md`, `CONTRIBUTING.md`, `SECURITY.md`, `.gitattributes`.
 

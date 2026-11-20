@@ -16,6 +16,7 @@ answer so you can see what it was told.
 from __future__ import annotations
 
 import argparse
+import hmac
 import json
 import os
 import re
@@ -25,6 +26,7 @@ import sys
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import webbrowser
 from datetime import datetime
@@ -42,8 +44,14 @@ DEFAULT_CONFIG = {
                   "Be concise and concrete. If machine facts are supplied, use them "
                   "and say what you used. Never invent hardware details.",
     },
-    "server": {"host": "0.0.0.0", "port": 8080},
+    # auth_token: empty means "no authentication", which is the LAN default. Set it
+    # before exposing the page beyond your own network; see SECURITY.md.
+    "server": {"host": "0.0.0.0", "port": 8080, "auth_token": ""},
 }
+
+
+def _auth_token(config: dict) -> str:
+    return (config.get("server", {}).get("auth_token") or "").strip()
 
 # Words that mean 'look at the actual machine before answering'.
 MACHINE_HINTS = ("machine", "pc", "computer", "hardware", "disk", "drive", "ssd",
@@ -292,6 +300,27 @@ class Handler(BaseHTTPRequestHandler):
     def _note(self, message: str) -> None:
         print(f"[chat] {datetime.now().strftime('%H:%M:%S')} {message}", flush=True)
 
+    def _presented_token(self) -> str:
+        """Bearer header preferred; ?t= query for phones and browser bookmarks."""
+        header = self.headers.get("Authorization") or ""
+        if header.lower().startswith("bearer "):
+            return header[7:].strip()
+        query = urllib.parse.urlsplit(self.path).query
+        return (urllib.parse.parse_qs(query).get("t") or [""])[0].strip()
+
+    def _authorised(self) -> bool:
+        """True when no token is configured, or when the presented one matches.
+
+        With no token set, behaviour is exactly as before: any device on the
+        network can read the page. That is the documented LAN default.
+        """
+        expected = _auth_token(Handler.config)
+        if not expected:
+            return True
+        presented = self._presented_token()
+        # constant-time: a timing oracle on a shared token is a bad habit to build
+        return hmac.compare_digest(presented.encode("utf-8"), expected.encode("utf-8"))
+
     def _send(self, code: int, body: bytes, content_type: str,
               no_store: bool = False) -> None:
         self.send_response(code)
@@ -305,18 +334,28 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
-        if self.path in ("/", "/index.html"):
+        route = urllib.parse.urlsplit(self.path).path
+        if not self._authorised():
+            self._note(f"GET {route}  401  missing or wrong token")
+            self._send(401, b'{"error":"token required"}', "application/json")
+            return
+        if route in ("/", "/index.html"):
             page = render_page(Handler.config).encode("utf-8")
             self._send(200, page, "text/html; charset=utf-8", no_store=True)
             self._note(f"GET /  200  page served ({len(page)} bytes)")
-        elif self.path == "/api/status":
+        elif route == "/api/status":
             self._send(200, json.dumps(gather_status()).encode("utf-8"),
                        "application/json")
         else:
             self._send(404, b"not found", "text/plain")
 
     def do_POST(self):
-        if self.path != "/api/chat":
+        route = urllib.parse.urlsplit(self.path).path
+        if not self._authorised():
+            self._note(f"POST {route}  401  missing or wrong token")
+            self._send(401, b'{"error":"token required"}', "application/json")
+            return
+        if route != "/api/chat":
             self._send(404, b"not found", "text/plain")
             return
         length = int(self.headers.get("Content-Length", "0"))
@@ -350,15 +389,21 @@ def self_test(port: int) -> None:
     import time as _t
     _t.sleep(0.6)
     has_key = bool(Handler.config["model"].get("api_key"))
+    auth = _auth_token(Handler.config)
     lines = [f"AOS chat self-test  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
              f"port {port}",
              f"api_key configured: {'yes' if has_key else 'no'}",
+             f"auth: {'required' if auth else 'off (LAN open)'}",
              f"model: {Handler.config['model'].get('model')} @ "
              f"{Handler.config['model'].get('base_url')}"]
+    # The self-test has to authenticate too, or enabling auth would make it report
+    # a failure that only exists because the test forgot its own key.
+    headers = {"Authorization": f"Bearer {auth}"} if auth else {}
     for path in ("/", "/api/status"):
         url = f"http://127.0.0.1:{port}{path}"
         try:
-            with urllib.request.urlopen(url, timeout=5) as response:
+            request = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(request, timeout=5) as response:
                 body = response.read()
             line = f"{path} -> HTTP {response.status} ({len(body)} bytes)"
         except Exception as exc:            # noqa: BLE001 - report the reason
@@ -476,9 +521,29 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--port", type=int, default=None)
     parser.add_argument("--no-browser", action="store_true",
                         help="do not open the page in a browser")
+    parser.add_argument("--set-auth", action="store_true",
+                        help="set or clear the page's own access token, then exit")
     parser.add_argument("--set-key", action="store_true",
                         help="prompt for the model API token and store it in config.json")
     args = parser.parse_args(argv)
+
+    if args.set_auth:
+        import getpass
+        config = load_config()
+        current = _auth_token(config)
+        print(f"page token: {'set (' + str(len(current)) + ' characters)' if current else 'not set - the page is open to the LAN'}")
+        print("leave empty to remove authentication")
+        token = getpass.getpass("new page token (input is hidden): ").strip()
+        config.setdefault("server", {})["auth_token"] = token
+        with open(CONFIG_PATH, "w", encoding="utf-8") as handle:
+            json.dump(config, handle, indent=2)
+        if token:
+            print(f"stored ({len(token)} characters); clients must send"
+                  f" 'Authorization: Bearer <token>' or use ?t=<token>")
+        else:
+            print("cleared: the page is open to the LAN again")
+        print("restart the chat app for it to take effect")
+        return 0
 
     if args.set_key:
         import getpass
@@ -523,6 +588,8 @@ def main(argv: list[str]) -> int:
         print(f"[chat] something else owns the port: netstat -ano | findstr :{port}")
         return 2
     shown = lan_address() if host in ("0.0.0.0", "") else host
+    auth = _auth_token(config)
+    print(f"[chat] auth    {'required - use ?t=<token> or a Bearer header' if auth else 'off (any device on this network can read the page)'}")
     print(f"[chat] model   {config['model'].get('model')} @ "
           f"{config['model'].get('base_url')}")
     print(f"[chat] locally http://127.0.0.1:{port}")

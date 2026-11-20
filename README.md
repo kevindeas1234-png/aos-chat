@@ -71,8 +71,12 @@ rather than yesterday's page.
 
 ## Known behaviours
 
-- **No authentication.** The server binds all interfaces so a phone can reach it; the same
-  is true of every other device on that network. See [SECURITY.md](SECURITY.md).
+- **Authentication is opt-in, and off by default.** With no `auth_token`, the server binds
+  all interfaces and any device on your network can read the page. Set one with
+  `py chat_server.py --set-auth`, and clients must then send `Authorization: Bearer <token>`
+  or use `?t=<token>` — the query form exists because a phone bookmark cannot send a header.
+  Set it before exposing the page anywhere beyond your own network. See
+  [SECURITY.md](SECURITY.md).
 - **A second launch opens the page** instead of failing, because a double-click while it
   is already running is far more likely than a genuine port conflict.
 - **The port is exclusive.** If something else holds it you get a clear message naming the

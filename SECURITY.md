@@ -10,7 +10,10 @@ Expect no particular response time.
 
 ## Known exposures, by design
 
-| Unauthenticated page on all interfaces | Reachable by every device on the network, by design, so a phone can use it. Set `host` to `127.0.0.1` for local-only use. The API token is stored in `config.json` in plain text: gitignored, not encrypted. |
+| **Unauthenticated page by default** | With no `auth_token` set, the server binds all interfaces and every device on the network can read the page. A phone needs this. |
+| **Auth is opt-in** | `py chat_server.py --set-auth` stores a token; clients then send `Authorization: Bearer <token>` or `?t=<token>`. Compared in constant time. Set it before exposing the page beyond your own network, and note that `?t=` puts the token in a URL, which lands in browser history. |
+| **Model API token in plain text** | Stored in `config.json`: gitignored, but not encrypted. |
+| **No TLS** | Traffic is plain HTTP, so a token on an untrusted network is readable. Use a VPN or a tunnel that terminates TLS if that matters. |
 
 ## General
 
