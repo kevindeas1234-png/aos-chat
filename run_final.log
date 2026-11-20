@@ -12,3 +12,6 @@
 [chat] self-test /api/status -> HTTP 200 (566 bytes)
 [chat] self-test https /api/status -> FAILED: URLError: <urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>
 [chat] model probe -> OK: 'ok'
+[chat] 18:53:38 POST /api/chat  'In one sentence, how much free space is on D:?'
+[chat] 18:53:40   -> 29 chars in 1.4s  [grounded]
+[chat] 18:53:40 GET /  200  page served (4860 bytes)

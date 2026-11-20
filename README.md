@@ -71,16 +71,24 @@ rather than yesterday's page.
 
 ## Known behaviours
 
-- **Authentication is opt-in, and off by default.** With no `auth_token`, the server binds
-  all interfaces and any device on your network can read the page. Set one with
-  `py chat_server.py --set-auth`, and clients must then send `Authorization: Bearer <token>`
-  or use `?t=<token>` — the query form exists because a phone bookmark cannot send a header.
-  Set it before exposing the page anywhere beyond your own network. See
-  [SECURITY.md](SECURITY.md).
+- **Authentication is opt-in, and off by default.** See [Network exposure](#network-exposure) below.
 - **A second launch opens the page** instead of failing, because a double-click while it
   is already running is far more likely than a genuine port conflict.
 - **The port is exclusive.** If something else holds it you get a clear message naming the
   command to find it, rather than a silent second server.
+
+## Network exposure
+
+The server binds `0.0.0.0` so a phone on the same network can reach the page. **By default
+there is no authentication:** any device on your network reaches the same interface you do.
+
+- For this-PC-only use, set `"host": "127.0.0.1"` in `config.json`.
+- To require a key, run `py chat_server.py --set-auth`. Clients then send
+  `Authorization: Bearer <token>`, or `?t=<token>` if they cannot send a header.
+- The model API token is stored in `config.json` in plain text: gitignored, not encrypted.
+
+[`SECURITY.md`](SECURITY.md) lists this and the other exposures in full, with the reporting
+route.
 
 ## Reaching it from outside your network
 
