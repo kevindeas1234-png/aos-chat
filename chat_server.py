@@ -340,7 +340,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         route = urllib.parse.urlsplit(self.path).path
         if not self._authorised():
-            self._note(f"GET {route}  401  missing or wrong token")
+            # the client address matters here: on an exposed port, repeated 401s
+            # from an unknown address are someone guessing
+            self._note(f"GET {route}  401  from {self.client_address[0]}")
             self._send(401, b'{"error":"token required"}', "application/json")
             return
         if route in ("/", "/index.html"):
@@ -356,7 +358,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         route = urllib.parse.urlsplit(self.path).path
         if not self._authorised():
-            self._note(f"POST {route}  401  missing or wrong token")
+            self._note(f"POST {route}  401  from {self.client_address[0]}")
             self._send(401, b'{"error":"token required"}', "application/json")
             return
         if route != "/api/chat":
@@ -614,6 +616,13 @@ def main(argv: list[str]) -> int:
     tls_server = None
     tls_cfg = config.get("tls") or {}
     tls_port = int(tls_cfg.get("port") or 0)
+    if tls_port and not _auth_token(config):
+        # Fail closed. The plain LAN listener may be open; an internet-facing one
+        # may not, because encryption hides the token without replacing it.
+        print("[chat] refusing to start the secure listener without a page token")
+        print("[chat] encryption does not authenticate anyone. Run:")
+        print("[chat]   py chat_server.py --set-auth")
+        tls_port = 0
     if tls_port:
         cert_path = tls_cfg.get("cert") or "cert.pem"
         key_path = tls_cfg.get("key") or "key.pem"
@@ -648,10 +657,7 @@ def main(argv: list[str]) -> int:
     print(f"[chat] on your network  http://{shown}:{port}")
     if tls_server is not None:
         print(f"[chat] secure          https://{shown}:{tls_port}  (self-signed)")
-        if not auth:
-            print("[chat] WARNING: TLS is on but there is no page token.")
-            print("[chat] WARNING: encrypted transport does not authenticate anyone -")
-            print("[chat] WARNING: run 'py chat_server.py --set-auth' before exposing this.")
+        print("[chat] forward this port on the router only, never the plain one")
     else:
         print("[chat] secure          off (plain HTTP only)")
     print("[chat] Ctrl+C to stop")

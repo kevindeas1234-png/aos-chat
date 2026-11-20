@@ -124,6 +124,24 @@ All three are documented because all three are legitimate. The order is a recomm
 a prohibition — but the last one puts an AI endpoint on the public internet, and the token is
 the only thing between it and anyone who finds it.
 
+### If you do forward a port
+
+The app refuses to start the secure listener without a page token, so this cannot be done
+by accident. The steps are on the router, not in this repo:
+
+1. **Set the token first** — `py chat_server.py --set-auth`. The app will not expose anything
+   until it is set.
+2. **Forward one port only**, to this machine: external `8443` → `<this machine's LAN address>:8443`, TCP.
+   (Find it with `ipconfig`, or take it from the line the app prints at startup.)
+   Never forward `8081`; that listener has no TLS.
+   Using a high, unremarkable external port (say `44333` → internal `8443`) cuts down
+   automated scanning without changing anything in the app.
+3. **Expect the address to move.** A home connection's public IP changes on reconnect. Either
+   configure DDNS on the router or re-check the address each time.
+4. **Test from mobile data**, with WiFi off, so you are genuinely coming in from outside.
+5. **Watch the log.** Repeated `401` lines from an unknown address are somebody guessing at
+   the token.
+
 ## Troubleshooting
 
 **"Your connection is not private" in Chrome** — the browser is forcing HTTPS against a
